@@ -145,7 +145,7 @@ class SdClock(Clock):
             )
 
 
-def run(clock, data_reader, continuous=False):
+def run(clock, data_reader, continuous=False, stop=None):
     state = clock.capture()
     state["managed"] = "ai-meter-" + uuid.uuid4().hex[:12] + ".jpg"
     Path(__file__).with_name("sd-restore.local.json").write_text(
@@ -161,9 +161,27 @@ def run(clock, data_reader, continuous=False):
                 clock.upload(data, state["managed"])
                 uploaded = True
                 digest = current
-            clock.show(state["managed"])
-            print("SD PRO image selected.", flush=True)
-            time.sleep(120 if continuous else 15)
+            active = clock.read("/config").get("theme")
+            photos = clock.read("/photo/list").get("files", [])
+            needs_selection = (
+                active != 2
+                or not any(
+                    p.get("name") == state["managed"] and p.get("enabled")
+                    for p in photos
+                )
+                or any(
+                    p.get("name") != state["managed"] and p.get("enabled")
+                    for p in photos
+                )
+            )
+            if needs_selection:
+                clock.show(state["managed"])
+                print("SD PRO image selected.", flush=True)
+            if stop is not None:
+                if stop.wait(120 if continuous else 15):
+                    break
+            else:
+                time.sleep(120 if continuous else 15)
             if not continuous:
                 break
     finally:
