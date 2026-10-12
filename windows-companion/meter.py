@@ -93,14 +93,14 @@ def render(readings):
         label = "--" if primary is None else f"{primary}%"
         draw.text((230, y), label, font=font(40), fill="white", anchor="rt")
         detail = f"WEEK {secondary}%" if secondary is not None else "WEEK --"
-        draw.text((12, y + 37), detail, font=font(18), fill="#ffffff", anchor="lt")
+        draw.text((12, y + 49), detail, font=font(18), fill="#ffffff", anchor="lt")
         if primary is None:
             status = "STALE" if value["status"] == "Stale" else "NO DATA"
-            draw.text((228, y + 39), status, font=font(14), fill="#d2d9e1", anchor="rt")
-        draw.rounded_rectangle((12, y + 59, 228, y + 67), radius=3, fill="#333333")
+            draw.text((228, y + 51), status, font=font(14), fill="#d2d9e1", anchor="rt")
+        draw.rounded_rectangle((12, y + 35, 228, y + 43), radius=3, fill="#333333")
         if primary is not None and primary > 0:
             draw.rounded_rectangle(
-                (12, y + 59, 12 + round(216 * primary / 100), y + 67),
+                (12, y + 35, 12 + round(216 * primary / 100), y + 43),
                 radius=3,
                 fill=color,
             )
@@ -279,4 +279,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
-
