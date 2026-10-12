@@ -196,6 +196,7 @@ def main():
         help="Existing Windows companion meter snapshot folder",
     )
     parser.add_argument("--output", type=Path, default=Path("preview.jpg"))
+    parser.add_argument("--profile", choices=("ultra", "sd-pro"), default="ultra")
     parser.add_argument(
         "--host", help="Clock private IP; never changes wireless settings"
     )
@@ -216,6 +217,25 @@ def main():
     args = parser.parse_args()
     if (args.test or args.watch or args.restore) and not args.host:
         parser.error("Device actions require --host")
+    if args.profile == "sd-pro" and (args.test or args.watch or args.restore):
+        from sdpro import SdClock, run
+
+        clock = SdClock(args.host)
+        if args.restore:
+            clock.restore(
+                json.loads(
+                    Path(__file__)
+                    .with_name("sd-restore.local.json")
+                    .read_text(encoding="utf8")
+                )
+            )
+        else:
+            run(
+                clock,
+                lambda: render(load_readings(args.state_dir)),
+                continuous=args.watch,
+            )
+        return
     if args.restore:
         restore(
             Clock(args.host),
