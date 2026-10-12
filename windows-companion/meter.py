@@ -198,6 +198,11 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("preview.jpg"))
     parser.add_argument("--profile", choices=("ultra", "sd-pro"), default="ultra")
     parser.add_argument(
+        "--stop-on-stdin",
+        action="store_true",
+        help="Tray app may send stop on stdin for graceful restoration",
+    )
+    parser.add_argument(
         "--host", help="Clock private IP; never changes wireless settings"
     )
     mode = parser.add_mutually_exclusive_group()
@@ -230,10 +235,25 @@ def main():
                 )
             )
         else:
+            stop = None
+            if args.stop_on_stdin:
+                import sys
+                import threading
+
+                stop = threading.Event()
+
+                def listen():
+                    for line in sys.stdin:
+                        if line.strip() == "stop":
+                            break
+                    stop.set()
+
+                threading.Thread(target=listen, daemon=True).start()
             run(
                 clock,
                 lambda: render(load_readings(args.state_dir)),
                 continuous=args.watch,
+                stop=stop,
             )
         return
     if args.restore:
