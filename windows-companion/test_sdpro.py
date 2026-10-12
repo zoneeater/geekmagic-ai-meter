@@ -39,6 +39,7 @@ class SdTests(unittest.TestCase):
         self.assertEqual(clock.interval, 10)
         self.assertEqual(clock.selected, clock.restored["managedPhotos"])
         self.assertEqual(len(clock.selected), 3)
+        self.assertTrue(all(len(name) <= 24 for name in clock.selected))
         self.assertTrue(clock.selected[-1].endswith("-claude.jpg"))
 
     def test_graceful_stop_restores_display_without_waiting(self):
@@ -118,3 +119,4 @@ class SdTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
