@@ -40,11 +40,16 @@ class Clock:
             urllib.request.ProxyHandler({}), NoRedirect()
         )
 
+    def allowed_path(self, path):
+        return path in (
+            "/v.json",
+            "/app.json",
+            "/album.json",
+            "/theme_list.json",
+        ) or path.startswith(("/set?", "/doUpload?dir=", "/image/"))
+
     def request(self, path, data=None, headers=None):
-        if not (
-            path in ("/v.json", "/app.json", "/album.json", "/theme_list.json")
-            or path.startswith(("/set?", "/doUpload?dir=", "/image/"))
-        ):
+        if not self.allowed_path(path):
             raise ValueError("Unsupported stock-display endpoint")
         request = urllib.request.Request(
             self.base + path, data=data, headers=headers or {}
