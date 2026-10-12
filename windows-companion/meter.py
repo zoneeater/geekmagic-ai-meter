@@ -30,6 +30,25 @@ def window(value):
     return round(percent)
 
 
+def reset_label(value, now, weekly=False):
+    reset = value.get("resetsAt") if isinstance(value, dict) else None
+    if (
+        isinstance(reset, bool)
+        or not isinstance(reset, (int, float))
+        or not math.isfinite(reset)
+        or not now < reset < now + 366 * 86400
+    ):
+        return None
+    stamp = datetime.fromtimestamp(reset)
+    clock = stamp.strftime("%I:%M").lstrip("0") + stamp.strftime("%p")[0].lower()
+    day = (
+        stamp.strftime("%a") + " "
+        if weekly or stamp.date() != datetime.fromtimestamp(now).date()
+        else ""
+    )
+    return day + clock
+
+
 def reading(value, source, now):
     unavailable = {"primary": None, "secondary": None, "status": "Unavailable"}
     if (
@@ -74,10 +93,13 @@ def reading(value, source, now):
             "status": "Warning",
             "warningLabel": label,
             "warningDetail": detail,
+            "warningReset": reset_label({"resetsAt": reset}, now),
         }
     return {
         "primary": window(value.get("primary")),
         "secondary": window(value.get("secondary")),
+        "primaryReset": reset_label(value.get("primary"), now),
+        "secondaryReset": reset_label(value.get("secondary"), now, weekly=True),
         "status": "Remaining",
     }
 
@@ -133,6 +155,14 @@ def render(readings):
                 fill="#d2d9e1",
                 anchor="lt",
             )
+            if value.get("warningReset"):
+                draw.text(
+                    (228, y + 53),
+                    value["warningReset"],
+                    font=font(11),
+                    fill="#aebac5",
+                    anchor="rt",
+                )
             continue
         label = "--" if primary is None else f"{primary}%"
         draw.text((230, y), label, font=font(40), fill="white", anchor="rt")
@@ -141,6 +171,19 @@ def render(readings):
         if primary is None:
             status = "STALE" if value["status"] == "Stale" else "NO DATA"
             draw.text((228, y + 51), status, font=font(14), fill="#d2d9e1", anchor="rt")
+        else:
+            for reset, offset, prefix in (
+                (value.get("primaryReset"), 47, "5H "),
+                (value.get("secondaryReset"), 60, "WK "),
+            ):
+                if reset:
+                    draw.text(
+                        (228, y + offset),
+                        prefix + reset,
+                        font=font(11),
+                        fill="#aebac5",
+                        anchor="rt",
+                    )
         draw.rounded_rectangle((12, y + 35, 228, y + 43), radius=3, fill="#333333")
         if primary is not None and primary > 0:
             draw.rounded_rectangle(
@@ -323,3 +366,4 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
+
