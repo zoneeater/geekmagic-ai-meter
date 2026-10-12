@@ -8,6 +8,39 @@ from sdpro import SdClock
 
 
 class SdTests(unittest.TestCase):
+    def test_slideshow_uses_ten_seconds_and_restores_all_managed_images(self):
+        class FakeClock:
+            def capture(self):
+                return {"theme": 0}
+
+            def upload(self, data, filename):
+                pass
+
+            def read(self, path):
+                return {"theme": 0} if path == "/config" else {"files": []}
+
+            def show(self, filenames, interval):
+                self.selected, self.interval = filenames, interval
+
+            def restore(self, state):
+                self.restored = state
+
+        clock = FakeClock()
+        stop = threading.Event()
+        stop.set()
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(sdpro, "__file__", str(Path(folder) / "sdpro.py")):
+                sdpro.run(
+                    clock,
+                    lambda: {key: b"fixture" for key in ("codex", "gemini", "claude")},
+                    continuous=True,
+                    stop=stop,
+                )
+        self.assertEqual(clock.interval, 10)
+        self.assertEqual(clock.selected, clock.restored["managedPhotos"])
+        self.assertEqual(len(clock.selected), 3)
+        self.assertTrue(clock.selected[-1].endswith("-claude.jpg"))
+
     def test_graceful_stop_restores_display_without_waiting(self):
         class FakeClock:
             def capture(self):
