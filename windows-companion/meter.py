@@ -1,0 +1,242 @@
+"""Render normalized PC snapshots and display them using stock GeekMagic APIs."""
+
+import argparse
+import hashlib
+import io
+import json
+import math
+import time
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+from stock_clock import Clock, restore, test_clock
+
+PROVIDERS = ("codex", "claude", "gemini")
+
+
+def window(value):
+    if not isinstance(value, dict):
+        return None
+    percent = value.get("remainingPercent")
+    if (
+        isinstance(percent, bool)
+        or not isinstance(percent, (int, float))
+        or not math.isfinite(percent)
+        or not 0 <= percent <= 100
+    ):
+        return None
+    return round(percent)
+
+
+def reading(value, source, now):
+    unavailable = {"primary": None, "secondary": None, "status": "Unavailable"}
+    if (
+        not isinstance(value, dict)
+        or value.get("source") != source
+        or value.get("version") != 1
+    ):
+        return unavailable
+    try:
+        stamp = datetime.fromisoformat(value["updatedAt"].replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            return unavailable
+        age = now - stamp.timestamp()
+    except (KeyError, ValueError, TypeError, AttributeError):
+        return unavailable
+    if not -60 <= age <= 300:
+        return {**unavailable, "status": "Stale"}
+    return {
+        "primary": window(value.get("primary")),
+        "secondary": window(value.get("secondary")),
+        "status": "Remaining",
+    }
+
+
+def load_readings(directory, now=None):
+    now = time.time() if now is None else now
+    result = {}
+    for source in PROVIDERS:
+        path = directory / (
+            "usage.local.json" if source == "codex" else source + ".local.json"
+        )
+        try:
+            if path.stat().st_size > 4096:
+                raise ValueError("Snapshot too large")
+            value = json.loads(path.read_text(encoding="utf8"))
+        except (OSError, ValueError):
+            value = None
+        result[source] = reading(value, source, now)
+    return result
+
+
+def render(readings):
+    image = Image.new("RGB", (240, 240), "#080b10")
+    draw = ImageDraw.Draw(image)
+    font_path = Path("C:/Windows/Fonts/segoeui.ttf")
+
+    def font(size):
+        return (
+            ImageFont.truetype(str(font_path), size)
+            if font_path.exists()
+            else ImageFont.load_default(size=size)
+        )
+
+    draw.text((12, 9), "AI ALLOWANCE REMAINING", font=font(14), fill="#d2d9e1")
+    for source, y, color in zip(
+        PROVIDERS, (38, 100, 162), ("#65e5ac", "#eead81", "#86b8ff")
+    ):
+        value = readings[source]
+        primary, secondary = value["primary"], value["secondary"]
+        draw.text((12, y), source.upper(), font=font(15), fill=color)
+        label = "--" if primary is None else f"{primary}%"
+        draw.text((165, y - 3), label, font=font(23), fill="white")
+        detail = f"Weekly {secondary}%" if secondary is not None else "Weekly --"
+        draw.text((12, y + 22), detail, font=font(12), fill="#b4bfcc")
+        draw.text((117, y + 23), value["status"], font=font(11), fill="#b4bfcc")
+        draw.rounded_rectangle((12, y + 42, 228, y + 49), radius=3, fill="#28303b")
+        if primary is not None and primary > 0:
+            draw.rounded_rectangle(
+                (12, y + 42, 12 + round(216 * primary / 100), y + 49),
+                radius=3,
+                fill=color,
+            )
+    draw.text(
+        (12, 223), "Primary window / weekly allowance", font=font(10), fill="#8995a5"
+    )
+    data = io.BytesIO()
+    image.save(data, "JPEG", quality=88, optimize=True)
+    return data.getvalue()
+
+
+def capture(clock):
+    version = clock.read("/v.json")
+    if version.get("m") != "SmallTV-Ultra" or not str(version.get("v", "")).startswith(
+        "Ultra-V"
+    ):
+        raise ValueError(
+            "Only verified factory SmallTV-Ultra profile is enabled; other models need an adapter"
+        )
+    app, album, rotation = (
+        clock.read(path) for path in ("/app.json", "/album.json", "/theme_list.json")
+    )
+    if (
+        type(app.get("theme")) is not int
+        or app["theme"] == 3
+        or album.get("autoplay") not in (0, 1)
+        or type(album.get("i_i")) is not int
+        or album["i_i"] < 1
+    ):
+        raise ValueError(
+            "Select a stock Clock/Weather theme; unrecognized state prevents changes"
+        )
+    if (
+        rotation.get("sw_en") not in (0, 1)
+        or type(rotation.get("sw_i")) is not int
+        or not isinstance(rotation.get("list"), str)
+    ):
+        raise ValueError("Unrecognized rotation state prevents changes")
+    state = {
+        "theme": app["theme"],
+        "autoplay": album["autoplay"],
+        "interval": album["i_i"],
+        "rotation": {key: rotation[key] for key in ("sw_en", "sw_i", "list")},
+    }
+    Path(__file__).with_name("restore.local.json").write_text(
+        json.dumps(state), encoding="utf8"
+    )
+    return state
+
+
+def watch(clock, directory):
+    state = capture(clock)
+    fingerprint = None
+    filename = "ai-meter-" + uuid.uuid4().hex[:12] + ".jpg"
+    try:
+        clock.set(
+            sw_en=0,
+            sw_i=state["rotation"]["sw_i"],
+            theme_list=state["rotation"]["list"],
+        )
+        clock.set(i_i=state["interval"], autoplay=0)
+        while True:
+            data = render(load_readings(directory))
+            digest = hashlib.sha256(data).hexdigest()
+            if digest != fingerprint:
+                # One unique filename per session; never overwrite or delete user images.
+                boundary = "----aimeter" + uuid.uuid4().hex
+                body = (
+                    f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: image/jpeg\r\n\r\n'.encode()
+                    + data
+                    + f"\r\n--{boundary}--\r\n".encode()
+                )
+                clock.request(
+                    "/doUpload?dir=%2Fimage%2F",
+                    body,
+                    {"Content-Type": "multipart/form-data; boundary=" + boundary},
+                )
+                fingerprint = digest
+                print("Meter image updated.", flush=True)
+            # Reassert selection after a clock reboot without uploading unchanged pixels.
+            clock.set(theme=3)
+            clock.set(img="/image/" + filename)
+            time.sleep(120)
+    finally:
+        restore(clock, state)
+        print("Previous clock display settings restored.", flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--state-dir",
+        type=Path,
+        required=True,
+        help="Existing Windows companion meter snapshot folder",
+    )
+    parser.add_argument("--output", type=Path, default=Path("preview.jpg"))
+    parser.add_argument(
+        "--host", help="Clock private IP; never changes wireless settings"
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--test", action="store_true", help="One 15-second display test, then restore"
+    )
+    mode.add_argument(
+        "--watch",
+        action="store_true",
+        help="Upload changed readings every two minutes; Ctrl+C restores",
+    )
+    mode.add_argument(
+        "--restore",
+        action="store_true",
+        help="Restore saved display settings after interrupted run",
+    )
+    args = parser.parse_args()
+    if (args.test or args.watch or args.restore) and not args.host:
+        parser.error("Device actions require --host")
+    if args.restore:
+        restore(
+            Clock(args.host),
+            json.loads(
+                Path(__file__)
+                .with_name("restore.local.json")
+                .read_text(encoding="utf8")
+            ),
+        )
+        return
+    args.output.write_bytes(render(load_readings(args.state_dir)))
+    if args.test:
+        test_clock(Clock(args.host), args.output)
+    elif args.watch:
+        watch(Clock(args.host), args.state_dir)
+    else:
+        print("Preview saved. No device contacted.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
