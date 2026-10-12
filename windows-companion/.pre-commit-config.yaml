@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: windows-meter-lint
+        name: Windows meter lint
+        entry: uv run --project windows-companion ruff check windows-companion
+        language: system
+        pass_filenames: false
+      - id: windows-meter-format
+        name: Windows meter formatting
+        entry: uv run --project windows-companion ruff format --check windows-companion
+        language: system
+        pass_filenames: false
+      - id: windows-meter-tests
+        name: Windows meter tests
+        entry: uv run --project windows-companion python -m unittest discover -s windows-companion -p test_*.py
+        language: system
+        pass_filenames: false
