@@ -47,6 +47,34 @@ def reading(value, source, now):
         return unavailable
     if not -60 <= age <= 300:
         return {**unavailable, "status": "Stale"}
+    warning = value.get("limitWarning")
+    if source == "claude" and isinstance(warning, dict):
+        state = warning.get("state")
+        reset = warning.get("resetsAt")
+        if (
+            isinstance(reset, bool)
+            or not isinstance(reset, (int, float))
+            or not math.isfinite(reset)
+        ):
+            reset = None
+        expired = reset is not None and reset <= now
+        label = {"limited": "LIMIT REACHED", "near-limit": "NEAR LIMIT"}.get(
+            state, "NO WARNING SEEN"
+        )
+        detail = "USE COMPANION"
+        if expired:
+            label, detail = "CHECK CLAUDE", "RESET TIME PASSED"
+        elif reset is not None:
+            minutes = math.ceil((reset - now) / 60)
+            detail = f"RESET IN {minutes // 60}h {minutes % 60}m"
+        elif state == "limited":
+            detail = "RESET UNKNOWN"
+        return {
+            **unavailable,
+            "status": "Warning",
+            "warningLabel": label,
+            "warningDetail": detail,
+        }
     return {
         "primary": window(value.get("primary")),
         "secondary": window(value.get("secondary")),
@@ -90,6 +118,22 @@ def render(readings):
         value = readings[source]
         primary, secondary = value["primary"], value["secondary"]
         draw.text((12, y + 5), source.upper(), font=font(20), fill=color, anchor="lt")
+        if value["status"] == "Warning":
+            draw.text(
+                (12, y + 29),
+                value["warningLabel"],
+                font=font(20),
+                fill="white",
+                anchor="lt",
+            )
+            draw.text(
+                (12, y + 52),
+                value["warningDetail"],
+                font=font(14),
+                fill="#d2d9e1",
+                anchor="lt",
+            )
+            continue
         label = "--" if primary is None else f"{primary}%"
         draw.text((230, y), label, font=font(40), fill="white", anchor="rt")
         detail = f"WEEK {secondary}%" if secondary is not None else "WEEK --"
