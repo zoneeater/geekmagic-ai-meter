@@ -196,6 +196,96 @@ def render(readings):
     return data.getvalue()
 
 
+def render_full(readings, source):
+    image = Image.new("RGB", (240, 240), "black")
+    draw = ImageDraw.Draw(image)
+    path = Path("C:/Windows/Fonts/segoeuib.ttf")
+
+    def font(size):
+        return (
+            ImageFont.truetype(str(path), size)
+            if path.exists()
+            else ImageFont.load_default(size=size)
+        )
+
+    color = {"codex": "#65e5ac", "gemini": "#99caff", "claude": "#ffc499"}[source]
+    value = readings[source]
+    draw.text((120, 12), source.upper(), font=font(30), fill=color, anchor="mt")
+    if value["status"] == "Warning":
+        labels = {
+            "LIMIT REACHED": ("LIMIT", "REACHED"),
+            "NEAR LIMIT": ("NEAR", "LIMIT"),
+            "NO WARNING SEEN": ("NO WARNING", "SEEN"),
+            "CHECK CLAUDE": ("CHECK", "CLAUDE"),
+        }
+        first, second = labels[value["warningLabel"]]
+        draw.text((120, 73), first, font=font(34), fill="white", anchor="mt")
+        draw.text((120, 115), second, font=font(34), fill="white", anchor="mt")
+        draw.text(
+            (120, 182),
+            value["warningDetail"],
+            font=font(19),
+            fill="#bec8d1",
+            anchor="mt",
+        )
+        if value.get("warningReset"):
+            draw.text(
+                (120, 211),
+                "Resets " + value["warningReset"],
+                font=font(14),
+                fill="#aebac5",
+                anchor="mt",
+            )
+    else:
+        primary = value["primary"]
+        draw.text(
+            (120, 55),
+            "--" if primary is None else f"{primary}%",
+            font=font(73),
+            fill="white",
+            anchor="mt",
+        )
+        draw.text(
+            (120, 134),
+            "REMAINING" if primary is not None else value["status"].upper(),
+            font=font(16),
+            fill="#bec8d1",
+            anchor="mt",
+        )
+        draw.rounded_rectangle((16, 160, 224, 173), radius=5, fill="#333333")
+        if primary is not None and primary > 0:
+            draw.rounded_rectangle(
+                (16, 160, 16 + round(208 * primary / 100), 173), radius=5, fill=color
+            )
+        secondary = value["secondary"]
+        draw.text(
+            (16, 184),
+            "WEEK " + ("--" if secondary is None else f"{secondary}%"),
+            font=font(23),
+            fill="white",
+            anchor="lt",
+        )
+        if value.get("primaryReset"):
+            draw.text(
+                (224, 189),
+                "5H " + value["primaryReset"],
+                font=font(12),
+                fill="#aebac5",
+                anchor="rt",
+            )
+        if value.get("secondaryReset"):
+            draw.text(
+                (224, 217),
+                "WK " + value["secondaryReset"],
+                font=font(12),
+                fill="#aebac5",
+                anchor="rt",
+            )
+    data = io.BytesIO()
+    image.save(data, "JPEG", quality=88, optimize=True)
+    return data.getvalue()
+
+
 def capture(clock):
     version = clock.read("/v.json")
     if version.get("m") != "SmallTV-Ultra" or not str(version.get("v", "")).startswith(
@@ -337,7 +427,10 @@ def main():
                 threading.Thread(target=listen, daemon=True).start()
             run(
                 clock,
-                lambda: render(load_readings(args.state_dir)),
+                lambda: {
+                    source: render_full(load_readings(args.state_dir), source)
+                    for source in PROVIDERS
+                },
                 continuous=args.watch,
                 stop=stop,
             )
@@ -366,4 +459,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
-
