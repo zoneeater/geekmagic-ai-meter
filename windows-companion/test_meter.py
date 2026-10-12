@@ -39,6 +39,24 @@ class MeterTests(unittest.TestCase):
         self.assertLess(len(data), 50000)
         self.assertEqual(data, render(values))
 
+    def test_warning_countdown_does_not_claim_percentage_or_reset_availability(self):
+        self.value.update(
+            source="claude",
+            limitWarning={"state": "limited", "resetsAt": self.now + 3600},
+        )
+        result = reading(self.value, "claude", self.now)
+        self.assertIsNone(result["primary"])
+        self.assertEqual(result["warningLabel"], "LIMIT REACHED")
+        self.assertEqual(result["warningDetail"], "RESET IN 1h 0m")
+        self.value["limitWarning"]["resetsAt"] = self.now - 1
+        self.assertEqual(
+            reading(self.value, "claude", self.now)["warningLabel"], "CHECK CLAUDE"
+        )
+        self.value["limitWarning"] = {"state": "unknown", "resetsAt": None}
+        self.assertEqual(
+            reading(self.value, "claude", self.now)["warningLabel"], "NO WARNING SEEN"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
