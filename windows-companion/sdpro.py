@@ -166,7 +166,7 @@ def run(clock, data_reader, continuous=False, stop=None):
                 {state["managed"]: data}
                 if not slideshow
                 else {
-                    state["managed"].replace(".jpg", f"-{i:02d}-{source}.jpg"): frame
+                    f"ai-{state['managed'][9:15]}-{i:02d}-{source}.jpg": frame
                     for i, (source, frame) in enumerate(data.items())
                 }
             )
@@ -207,3 +207,4 @@ def run(clock, data_reader, continuous=False, stop=None):
             state.pop("managed", None)
         clock.restore(state)
         print("Original SD PRO display settings restored.", flush=True)
+
