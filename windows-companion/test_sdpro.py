@@ -1,8 +1,39 @@
 import unittest
+import tempfile
+import threading
+from pathlib import Path
+from unittest.mock import patch
+import sdpro
 from sdpro import SdClock
 
 
 class SdTests(unittest.TestCase):
+    def test_graceful_stop_restores_display_without_waiting(self):
+        class FakeClock:
+            def capture(self):
+                return {"theme": 0}
+
+            def upload(self, data, filename):
+                self.filename = filename
+
+            def read(self, path):
+                return {"theme": 0} if path == "/config" else {"files": []}
+
+            def show(self, filename):
+                self.shown = filename
+
+            def restore(self, state):
+                self.restored = state["theme"]
+
+        clock = FakeClock()
+        stop = threading.Event()
+        stop.set()
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(sdpro, "__file__", str(Path(folder) / "sdpro.py")):
+                sdpro.run(clock, lambda: b"jpeg fixture", continuous=True, stop=stop)
+        self.assertEqual(clock.restored, 0)
+        self.assertEqual(clock.shown, clock.filename)
+
     def test_enable_photo_theme_before_disabling_current(self):
         clock = SdClock("192.168.0.70")
         clock.read = lambda path: {
