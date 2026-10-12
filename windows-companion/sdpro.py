@@ -101,20 +101,22 @@ class SdClock(Clock):
         if response.strip().upper() == b"FAIL":
             raise RuntimeError("Image upload rejected")
 
-    def show(self, filename):
+    def show(self, filename, interval=1):
+        selected = [filename] if isinstance(filename, str) else filename
         photos = self.read("/photo/list")["files"]
-        if not any(f.get("name") == filename for f in photos):
+        if not set(selected).issubset({f.get("name") for f in photos}):
             raise RuntimeError("Uploaded image is not in photo list")
-        self.change("/photo/toggle", name=filename, state=1)
+        for name in selected:
+            self.change("/photo/toggle", name=name, state=1)
         for photo in photos:
-            if photo["name"] != filename:
+            if photo["name"] not in selected:
                 self.change("/photo/toggle", name=photo["name"], state=0)
         # This firmware rejects disabling the last active theme.
         self.change("/theme/toggle", id=2, state=1)
         for theme in range(7):
             if theme != 2:
                 self.change("/theme/toggle", id=theme, state=0)
-        self.change("/photo/interval", val=1)
+        self.change("/photo/interval", val=interval)
         self.change("/api/set", key="theme", value=2)
 
     def restore(self, state):
@@ -122,8 +124,11 @@ class SdClock(Clock):
             ("/photo/toggle", {"name": p["name"], "state": int(p["enabled"])})
             for p in state["photos"]
         ]
-        if state.get("managed"):
-            actions.append(("/photo/toggle", {"name": state["managed"], "state": 0}))
+        managed = state.get(
+            "managedPhotos", [state["managed"]] if state.get("managed") else []
+        )
+        for name in managed:
+            actions.append(("/photo/toggle", {"name": name, "state": 0}))
         actions += [
             ("/theme/toggle", {"id": t["id"], "state": int(t["enabled"])})
             for t in sorted(state["themes"], key=lambda t: not t["enabled"])
@@ -151,31 +156,44 @@ def run(clock, data_reader, continuous=False, stop=None):
     Path(__file__).with_name("sd-restore.local.json").write_text(
         json.dumps(state), encoding="utf8"
     )
-    digest = None
+    digests = {}
     uploaded = False
     try:
         while True:
             data = data_reader()
-            current = hashlib.sha256(data).hexdigest()
-            if current != digest:
-                clock.upload(data, state["managed"])
-                uploaded = True
-                digest = current
+            slideshow = isinstance(data, dict)
+            frames = (
+                {state["managed"]: data}
+                if not slideshow
+                else {
+                    state["managed"].replace(".jpg", f"-{i:02d}-{source}.jpg"): frame
+                    for i, (source, frame) in enumerate(data.items())
+                }
+            )
+            if slideshow:
+                state["managedPhotos"] = list(frames)
+                Path(__file__).with_name("sd-restore.local.json").write_text(
+                    json.dumps(state), encoding="utf8"
+                )
+            for name, frame in frames.items():
+                current = hashlib.sha256(frame).hexdigest()
+                if current != digests.get(name):
+                    clock.upload(frame, name)
+                    uploaded = True
+                    digests[name] = current
             active = clock.read("/config").get("theme")
-            photos = clock.read("/photo/list").get("files", [])
+            album = clock.read("/photo/list")
+            photos = album.get("files", [])
             needs_selection = (
                 active != 2
-                or not any(
-                    p.get("name") == state["managed"] and p.get("enabled")
-                    for p in photos
-                )
-                or any(
-                    p.get("name") != state["managed"] and p.get("enabled")
-                    for p in photos
-                )
+                or {p.get("name") for p in photos if p.get("enabled")} != set(frames)
+                or (slideshow and album.get("interval") != 10)
             )
             if needs_selection:
-                clock.show(state["managed"])
+                if slideshow:
+                    clock.show(list(frames), interval=10)
+                else:
+                    clock.show(state["managed"])
                 print("SD PRO image selected.", flush=True)
             if stop is not None:
                 if stop.wait(120 if continuous else 15):
