@@ -1,3 +1,9 @@
+# GeekMagic AI Meter
+
+This fork adds a [standalone Windows AI usage meter](windows-companion/README.md) for Codex, Claude and Gemini using the clock's stock image API. It uses existing Windows companion snapshots, requires no Home Assistant, and does not flash firmware. Start with an offline preview, then a 15-second display test on a confirmed factory SmallTV-Ultra. Live device validation remains pending.
+
+The original Home Assistant integration and its documentation follow below.
+
 # GeekMagic Display for Home Assistant
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
