@@ -13,7 +13,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from stock_clock import Clock, restore, test_clock
 
-PROVIDERS = ("codex", "claude", "gemini")
+PROVIDERS = ("codex", "gemini", "claude")
 
 
 def window(value):
@@ -135,7 +135,7 @@ def render(readings):
 
     draw.text((12, 5), "REMAINING", font=font(17), fill="#ffffff", anchor="lt")
     for source, y, color in zip(
-        PROVIDERS, (29, 99, 169), ("#65e5ac", "#ffc499", "#99caff")
+        PROVIDERS, (29, 99, 169), ("#65e5ac", "#99caff", "#ffc499")
     ):
         value = readings[source]
         primary, secondary = value["primary"], value["secondary"]
@@ -366,4 +366,5 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
+
 
