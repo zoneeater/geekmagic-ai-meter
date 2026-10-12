@@ -72,9 +72,9 @@ def load_readings(directory, now=None):
 
 
 def render(readings):
-    image = Image.new("RGB", (240, 240), "#080b10")
+    image = Image.new("RGB", (240, 240), "#000000")
     draw = ImageDraw.Draw(image)
-    font_path = Path("C:/Windows/Fonts/segoeui.ttf")
+    font_path = Path("C:/Windows/Fonts/segoeuib.ttf")
 
     def font(size):
         return (
@@ -83,28 +83,27 @@ def render(readings):
             else ImageFont.load_default(size=size)
         )
 
-    draw.text((12, 9), "AI ALLOWANCE REMAINING", font=font(14), fill="#d2d9e1")
+    draw.text((12, 5), "REMAINING", font=font(17), fill="#ffffff", anchor="lt")
     for source, y, color in zip(
-        PROVIDERS, (38, 100, 162), ("#65e5ac", "#eead81", "#86b8ff")
+        PROVIDERS, (29, 99, 169), ("#65e5ac", "#ffc499", "#99caff")
     ):
         value = readings[source]
         primary, secondary = value["primary"], value["secondary"]
-        draw.text((12, y), source.upper(), font=font(15), fill=color)
+        draw.text((12, y + 5), source.upper(), font=font(20), fill=color, anchor="lt")
         label = "--" if primary is None else f"{primary}%"
-        draw.text((165, y - 3), label, font=font(23), fill="white")
-        detail = f"Weekly {secondary}%" if secondary is not None else "Weekly --"
-        draw.text((12, y + 22), detail, font=font(12), fill="#b4bfcc")
-        draw.text((117, y + 23), value["status"], font=font(11), fill="#b4bfcc")
-        draw.rounded_rectangle((12, y + 42, 228, y + 49), radius=3, fill="#28303b")
+        draw.text((230, y), label, font=font(40), fill="white", anchor="rt")
+        detail = f"WEEK {secondary}%" if secondary is not None else "WEEK --"
+        draw.text((12, y + 37), detail, font=font(18), fill="#ffffff", anchor="lt")
+        if primary is None:
+            status = "STALE" if value["status"] == "Stale" else "NO DATA"
+            draw.text((228, y + 39), status, font=font(14), fill="#d2d9e1", anchor="rt")
+        draw.rounded_rectangle((12, y + 59, 228, y + 67), radius=3, fill="#333333")
         if primary is not None and primary > 0:
             draw.rounded_rectangle(
-                (12, y + 42, 12 + round(216 * primary / 100), y + 49),
+                (12, y + 59, 12 + round(216 * primary / 100), y + 67),
                 radius=3,
                 fill=color,
             )
-    draw.text(
-        (12, 223), "Primary window / weekly allowance", font=font(10), fill="#8995a5"
-    )
     data = io.BytesIO()
     image.save(data, "JPEG", quality=88, optimize=True)
     return data.getvalue()
@@ -280,3 +279,4 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
+
